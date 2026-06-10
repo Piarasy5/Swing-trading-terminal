@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── API config ───────────────────────────────────────────────────────────────
-const API_BASE = "https://swing-trading-terminal.onrender.com";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 async function apiFetch(path) {
   const res = await fetch(`${API_BASE}${path}`);
@@ -950,16 +950,31 @@ function ScannerBadgeSmall({text}) {
   }}>{text}</span>;
 }
 
+const INDEX_META = {
+  SPY: {name:"S&P 500",  hasMa:true},
+  QQQ: {name:"Nasdaq",   hasMa:true},
+  IWM: {name:"Russell",  hasMa:true},
+  VIX: {name:"Volatility",hasMa:false},
+  DXY: {name:"Dollar",   hasMa:false},
+  TNX: {name:"10Y Yield",hasMa:false},
+};
+
 function HomePanel({onNavigate}) {
-  const sectors1M = [...SECTOR_DATA["1M"]].sort((a,b)=>b.chg-a.chg);
-  const maxAbs = Math.max(...sectors1M.map(s=>Math.abs(s.chg)));
+  const { data: overviewData } = useApi("/api/overview", null);
+  const { data: sectorsRaw }   = useApi("/api/sectors?period=1M", SECTOR_DATA["1M"]);
+  const sectors1M = [...sectorsRaw].sort((a,b)=>b.chg-a.chg);
+  const maxAbs = Math.max(...sectors1M.map(s=>Math.abs(s.chg)), 1);
+
+  // Use live indices if available, otherwise fall back to mock
+  const liveIndices = overviewData?.indices || MARKET_INDICES;
 
   return (
     <div style={{padding:"20px",animation:"fadeIn 0.2s ease",display:"flex",flexDirection:"column",gap:16}}>
 
       {/* ── Row 1: Indices ── */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
-        {MARKET_INDICES.map((idx,i)=>{
+        {liveIndices.map((idx,i)=>{
+          const meta = INDEX_META[idx.sym] || {name:idx.sym, hasMa:false};
           const up = idx.chg >= 0;
           const isVix = idx.sym==="VIX";
           const goodChg = isVix ? !up : up;
@@ -972,7 +987,7 @@ function HomePanel({onNavigate}) {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                 <div>
                   <div style={{fontSize:11,fontWeight:700,fontFamily:"DM Mono,monospace",color:C.text}}>{idx.sym}</div>
-                  <div style={{fontSize:10,color:C.faint,fontFamily:"DM Sans,sans-serif"}}>{idx.name}</div>
+                  <div style={{fontSize:10,color:C.faint,fontFamily:"DM Sans,sans-serif"}}>{meta.name}</div>
                 </div>
                 <span style={{
                   fontSize:10,fontWeight:600,fontFamily:"DM Mono,monospace",
@@ -982,9 +997,9 @@ function HomePanel({onNavigate}) {
                 }}>{up?"+":""}{idx.chg.toFixed(2)}%</span>
               </div>
               <div style={{fontSize:16,fontWeight:700,fontFamily:"DM Mono,monospace",color:C.text,marginBottom:6}}>
-                {idx.val.toFixed(2)}
+                {idx.price != null ? idx.price.toFixed(2) : (idx.val||0).toFixed(2)}
               </div>
-              {idx.vs20 && (
+              {meta.hasMa && idx.vs20 && (
                 <div style={{display:"flex",gap:4}}>
                   {[["20",idx.vs20],["50",idx.vs50],["200",idx.vs200]].map(([n,v])=>(
                     <span key={n} style={{
@@ -996,7 +1011,7 @@ function HomePanel({onNavigate}) {
                   ))}
                 </div>
               )}
-              {!idx.vs20 && (
+              {!meta.hasMa && (
                 <div style={{fontSize:10,color:C.muted,fontFamily:"DM Mono,monospace"}}>
                   {idx.sym==="VIX"?"Percentile: 28th — Low":idx.sym==="DXY"?"Trend: Neutral":"Yield curve: Flat"}
                 </div>
