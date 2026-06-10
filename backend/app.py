@@ -76,7 +76,7 @@ SECTOR_GROUPS = {
 # ─── Cache ────────────────────────────────────────────────────────────────────
 _cache: dict = {}
 _lock  = threading.Lock()
-TTL    = 300  # 5 minutes
+TTL    = 1800  # 30 minutes — reduce yfinance calls on free tier
 
 def cache_get(key):
     with _lock:
@@ -90,24 +90,33 @@ def cache_set(key, data):
         _cache[key] = {"data": data, "ts": time.time()}
 
 # ─── yfinance helpers ─────────────────────────────────────────────────────────
-def fetch_history(tickers: list[str], period: str = "1y") -> pd.DataFrame:
-    """Download adjusted closes for a list of tickers. Returns wide DataFrame."""
+def fetch_history(tickers: list[str], period: str = "1y", batch_size: int = 50) -> pd.DataFrame:
+    """Download adjusted closes in batches to stay within 512MB RAM limit."""
     if not tickers:
         return pd.DataFrame()
+    all_closes = []
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        try:
+            raw = yf.download(batch, period=period, auto_adjust=True,
+                              progress=False, threads=False)
+            if raw.empty:
+                continue
+            if isinstance(raw.columns, pd.MultiIndex):
+                closes = raw["Close"]
+            else:
+                closes = raw[["Close"]].rename(columns={"Close": batch[0]})
+            closes = closes.dropna(axis=1, how="all")
+            all_closes.append(closes)
+        except Exception as e:
+            print(f"fetch_history batch error: {e}")
+            continue
+    if not all_closes:
+        return pd.DataFrame()
     try:
-        raw = yf.download(tickers, period=period, auto_adjust=True,
-                          progress=False, threads=True)
-        if raw.empty:
-            return pd.DataFrame()
-        # Multi-ticker returns MultiIndex; single ticker is flat
-        if isinstance(raw.columns, pd.MultiIndex):
-            closes = raw["Close"]
-        else:
-            closes = raw[["Close"]].rename(columns={"Close": tickers[0]})
-        closes = closes.dropna(axis=1, how="all")
-        return closes
+        return pd.concat(all_closes, axis=1)
     except Exception as e:
-        print(f"fetch_history error: {e}")
+        print(f"concat error: {e}")
         return pd.DataFrame()
 
 def fetch_single(ticker: str, period: str = "1y") -> pd.Series | None:
