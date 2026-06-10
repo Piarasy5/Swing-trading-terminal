@@ -965,8 +965,11 @@ function HomePanel({onNavigate}) {
   const sectors1M = [...sectorsRaw].sort((a,b)=>b.chg-a.chg);
   const maxAbs = Math.max(...sectors1M.map(s=>Math.abs(s.chg)), 1);
 
-  // Use live indices if available, otherwise fall back to mock
-  const liveIndices = overviewData?.indices || MARKET_INDICES;
+  // Merge live API data over mock fallback so cards always render
+  const liveIndices = MARKET_INDICES.map(mock => {
+    const live = overviewData?.indices?.find(i => i.sym === mock.sym);
+    return live ? { ...mock, price: live.price, chg: live.chg } : mock;
+  });
 
   return (
     <div style={{padding:"20px",animation:"fadeIn 0.2s ease",display:"flex",flexDirection:"column",gap:16}}>
@@ -997,7 +1000,7 @@ function HomePanel({onNavigate}) {
                 }}>{up?"+":""}{idx.chg.toFixed(2)}%</span>
               </div>
               <div style={{fontSize:16,fontWeight:700,fontFamily:"DM Mono,monospace",color:C.text,marginBottom:6}}>
-                {idx.price != null ? idx.price.toFixed(2) : (idx.val||0).toFixed(2)}
+                {(idx.price ?? idx.val ?? 0).toFixed(2)}
               </div>
               {meta.hasMa && idx.vs20 && (
                 <div style={{display:"flex",gap:4}}>
