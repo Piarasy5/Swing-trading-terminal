@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── API config ───────────────────────────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_BASE = "https://swing-trading-terminal.onrender.com";
 
 async function apiFetch(path) {
   const res = await fetch(`${API_BASE}${path}`);
